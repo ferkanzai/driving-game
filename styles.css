@@ -156,7 +156,7 @@ h2 {
   width: 105px;
 }
 
-#start-btn {
+#start-btn, #back-btn {
   background-color: #4caf50;
   color: white;
   border: none;
@@ -169,13 +169,20 @@ h2 {
   margin-top: 0.5rem;
 }
 
-#start-btn:hover {
+#back-btn {
+  font-size: 1rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: 5px;
+  margin-top: 0;
+}
+
+#start-btn:hover, #back-btn:hover {
   background-color: #45a049;
   transform: translateY(-3px);
   box-shadow: 0 6px 20px rgba(76, 175, 80, 0.6);
 }
 
-#start-btn:active {
+#start-btn:active, #back-btn:active {
   transform: translateY(1px);
   box-shadow: 0 2px 10px rgba(76, 175, 80, 0.4);
 }
