@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Driving Game</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>3D Driving Game</h1>
+        
+        <div class="game-preview">
+            <div id="car-model"></div>
+            
+            <div class="color-selector">
+                <h2>Select Car Color</h2>
+                <div class="color-options">
+                    <button class="color-btn" data-color="#ff0000" style="background-color: #ff0000;" title="Red"></button>
+                    <button class="color-btn" data-color="#0000ff" style="background-color: #0000ff;" title="Blue"></button>
+                    <button class="color-btn" data-color="#00ff00" style="background-color: #00ff00;" title="Green"></button>
+                    <button class="color-btn" data-color="#ffff00" style="background-color: #ffff00;" title="Yellow"></button>
+                    <button class="color-btn" data-color="#ffffff" style="background-color: #ffffff;" title="White"></button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h2>Game Controls</h2>
+            <ul>
+                <li><strong><span class="key" id="w-key">W</span><span class="key" id="w-key-arrow">⬆️</span></strong>Accelerate</li>
+                <li><strong><span class="key" id="s-key">S</span><span class="key" id="s-key-arrow">⬇️</span></strong>Brake/Reverse</li>
+                <li><strong><span class="key" id="a-key">A</span><span class="key" id="a-key-arrow">⬅️</span></strong>Turn Left</li>
+                <li><strong><span class="key" id="d-key">D</span><span class="key" id="d-key-arrow">➡️</span></strong>Turn Right</li>
+                <li><strong><span class="key space" id="space-key">Space</span></strong>Handbrake</li>
+            </ul>
+        </div>
+        
+        <button id="start-btn">Start Driving!</button>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+</body>
+</html> 
