@@ -18,7 +18,7 @@ A 3D driving game built with Three.js and Vite.
 ### Prerequisites
 
 - Node.js (v20 or higher)
-- npm or yarn
+- npm
 
 ### Installation
 
@@ -33,16 +33,12 @@ cd driving-game
 
 ```bash
 npm install
-# or
-yarn
 ```
 
 3. Start the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
 ```
 
 4. Open your browser and navigate to `http://localhost:5173`
@@ -65,33 +61,11 @@ yarn dev
 
 ```bash
 npm run build
-# or
-yarn build
 ```
 
 The built files will be in the `dist` directory.
 
 ## Docker Deployment
-
-### Using Docker Compose (Recommended)
-
-1. Make sure you have Docker and Docker Compose installed on your system.
-
-2. Build and start the container:
-
-```bash
-docker-compose up -d
-```
-
-3. Access the game at `http://localhost:3000`
-
-4. To stop the container:
-
-```bash
-docker-compose down
-```
-
-### Using Docker Directly
 
 1. Build the Docker image:
 
@@ -103,6 +77,8 @@ docker build -t driving-game .
 
 ```bash
 docker run -d -p 3000:3000 --name driving-game driving-game
+# or
+docker run -it --rm -p 3000:3000 --name driving-game driving-game
 ```
 
 3. Access the game at `http://localhost:3000`
@@ -119,10 +95,6 @@ docker rm driving-game
 You can customize the port by setting the `PORT` environment variable in the `.env` file or when running the container:
 
 ```bash
-# Using docker-compose
-PORT=8080 docker-compose up -d
-
-# Using docker directly
 docker run -d -p 8080:3000 -e PORT=8080 --name driving-game driving-game
 ```
 
