@@ -348,6 +348,8 @@ h2 {
         right: 10px !important;
         font-size: 14px !important;
         padding: 5px 10px !important;
+        width: 100px !important;
+        text-align: center !important;
     }
     
     /* Adjust back button for mobile */
@@ -357,4 +359,72 @@ h2 {
         padding: 5px 10px !important;
         font-size: 12px !important;
     }
+}
+
+/* Joystick styles */
+#joystick {
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+#joystick-knob {
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+/* Joystick position selector styles */
+#joystick-position-selector {
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.position-option {
+    transition: background-color 0.2s ease;
+}
+
+.position-option:hover {
+    background-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.position-note {
+    font-size: 12px;
+    font-style: italic;
+    margin-top: 10px;
+    opacity: 0.8;
+}
+
+.joystick-position-settings {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 5px;
+}
+
+.joystick-position-settings p {
+    margin: 0 0 8px 0;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.position-options {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.position-btn {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 5px;
+    background-color: #333;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.position-btn:hover {
+    background-color: #444;
+}
+
+.position-btn.active {
+    background-color: #4caf50;
 }

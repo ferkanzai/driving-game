@@ -10,7 +10,8 @@ A 3D driving game built with Three.js and Vite.
 - Health system with 5 hearts
 - Game over screen when all hearts are lost
 - Sound effects
-- Mobile support with touch controls and swipe gestures
+- Mobile support with joystick controls
+- Customizable joystick position (bottom-right, bottom-left, or bottom-center)
 
 ## Development
 
@@ -56,11 +57,9 @@ yarn dev
 - **Space** - Handbrake
 
 ### Mobile
-- **Swipe Up** - Accelerate
-- **Swipe Down** - Brake/Reverse
-- **Swipe Left** - Turn Left
-- **Swipe Right** - Turn Right
-- **On-screen Buttons** - Alternative controls
+- **Joystick Up** - Accelerate
+- **Joystick Down** - Brake/Reverse
+- **Joystick Left/Right** - Steer
 
 ## Building for Production
 

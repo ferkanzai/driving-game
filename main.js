@@ -1,3 +1,6 @@
+// Function to set game container height (for iOS Safari fix)
+let setGameContainerHeight = () => {};
+
 // Initialize Three.js components
 let scene, camera, renderer, car, carBody;
 let isRotating = true;
@@ -31,10 +34,24 @@ let isTouching = false;
 let touchThrottle = false;
 let touchAcceleration = false;
 let touchBrake = false;
+let touchAccelerationIntensity = 0;
+let touchBrakeIntensity = 0;
 let touchLeft = false;
 let touchRight = false;
 let virtualControls;
 let isMobileDevice = false;
+
+// Joystick controls
+let joystick = null;
+let joystickKnob = null;
+let joystickActive = false;
+let joystickAngle = 0;
+let joystickDistance = 0;
+let joystickStartX = 0;
+let joystickStartY = 0;
+let joystickCurrentX = 0;
+let joystickCurrentY = 0;
+let joystickPosition = 'bottom-right'; // Default position: 'bottom-right'
 
 // Car color
 let currentColor = '#ff0000'; // Default red
@@ -255,9 +272,46 @@ function setupColorButtons() {
 // Set up start button
 function setupStartButton() {
   const startButton = document.getElementById('start-btn');
-
+  
   startButton.addEventListener('click', () => {
     startGame();
+  });
+  
+  // Set up joystick position buttons on main screen
+  if (isMobileDevice) {
+    // Load saved position
+    loadJoystickPosition();
+    
+    // Update active button
+    updateMainScreenPositionButtons();
+    
+    // Add click events to position buttons
+    document.querySelectorAll('.position-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        // Prevent the click from triggering the start button
+        e.stopPropagation();
+        
+        // Update joystick position
+        joystickPosition = btn.dataset.position;
+        
+        // Save position preference
+        saveJoystickPosition(joystickPosition);
+        
+        // Update active button
+        updateMainScreenPositionButtons();
+      });
+    });
+  }
+}
+
+// Update the active state of position buttons on main screen
+function updateMainScreenPositionButtons() {
+  document.querySelectorAll('.position-btn').forEach(btn => {
+    if (btn.dataset.position === joystickPosition) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
   });
 }
 
@@ -298,14 +352,42 @@ function startGame() {
   // Reset player health
   playerHealth = 5;
   
+  // Reset scroll position to ensure the game is visible
+  window.scrollTo(0, 0);
+  
+  // Prevent scrolling while playing
+  document.body.style.overflow = 'hidden';
+  
   // Create game container
   const gameContainer = document.createElement('div');
   gameContainer.id = 'game-container';
-  gameContainer.style.width = '100vw';
-  gameContainer.style.height = '100vh';
+  
+  // Fix for iOS Safari viewport height issues
+  setGameContainerHeight = () => {
+    const windowHeight = window.innerHeight;
+    gameContainer.style.width = '100%';
+    gameContainer.style.height = `${windowHeight}px`;
+    
+    // Force scroll to top again after height is set
+    window.scrollTo(0, 0);
+  };
+  
+  // Set initial height
+  setGameContainerHeight();
+  
+  // Update height on resize and orientation change
+  window.addEventListener('resize', setGameContainerHeight);
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+      setGameContainerHeight();
+      window.scrollTo(0, 0);
+    }, 100);
+  });
+  
   gameContainer.style.position = 'absolute';
   gameContainer.style.top = '0';
   gameContainer.style.left = '0';
+  gameContainer.style.overflow = 'hidden';
   document.body.appendChild(gameContainer);
   
   // Create back button
@@ -400,6 +482,8 @@ function startGame() {
   speedometer.style.fontSize = '18px';
   speedometer.style.fontWeight = 'bold';
   speedometer.style.zIndex = '100';
+  speedometer.style.width = '120px'; // Fixed width
+  speedometer.style.textAlign = 'center'; // Center the text
   speedometer.textContent = 'Speed: 0 km/h';
   gameContainer.appendChild(speedometer);
   
@@ -430,7 +514,11 @@ function startGame() {
   // Create virtual controls for mobile devices
   if (isMobileDevice) {
     createVirtualControls(gameContainer);
+    createSettingsButton(gameContainer);
     setupTouchEvents();
+    
+    // Update speedometer position based on joystick position
+    updateSpeedometerPosition();
   }
   
   // Set game as active
@@ -491,6 +579,13 @@ function stopGame() {
     document.body.removeChild(gameContainer);
   }
   
+  // Remove window event listeners for iOS Safari height fix
+  window.removeEventListener('resize', setGameContainerHeight);
+  window.removeEventListener('orientationchange', setGameContainerHeight);
+  
+  // Restore scrolling
+  document.body.style.overflow = '';
+  
   // Show start screen
   document.querySelector('.container').style.display = 'flex';
   
@@ -510,6 +605,11 @@ function stopGame() {
   touchRight = false;
   isTouching = false;
   
+  // Reset joystick controls
+  joystickActive = false;
+  joystick = null;
+  joystickKnob = null;
+  
   // Clear driving scene
   drivingScene = null;
   drivingCamera = null;
@@ -518,6 +618,20 @@ function stopGame() {
   drivingCarBody = null;
   trees = [];
   buildings = [];
+  
+  // Reset car color and preview
+  init();
+  updateCarColor(currentColor);
+  
+  // Reset active color button
+  const colorButtons = document.querySelectorAll('.color-btn');
+  colorButtons.forEach(btn => {
+    if (btn.getAttribute('data-color') === currentColor) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
 }
 
 // Initialize the driving scene
@@ -1217,13 +1331,19 @@ function handleDrivingControls() {
   const controlFactor = isCrashed ? 0.1 : 1.0; // Reduced from 0.3 to 0.1
 
   // Check for keyboard or touch controls for acceleration
-  if (keysPressed['w'] || keysPressed['arrowup'] || touchAcceleration) {
+  if (keysPressed['w'] || keysPressed['arrowup']) {
     velocity += ACCELERATION * controlFactor;
+  } else if (touchAcceleration) {
+    // Use intensity for mobile controls
+    velocity += ACCELERATION * controlFactor * (touchAccelerationIntensity || 1.0);
   }
 
   // Check for keyboard or touch controls for braking
-  if (keysPressed['s'] || keysPressed['arrowdown'] || touchBrake) {
+  if (keysPressed['s'] || keysPressed['arrowdown']) {
     velocity -= ACCELERATION * controlFactor;
+  } else if (touchBrake) {
+    // Use intensity for mobile controls
+    velocity -= ACCELERATION * controlFactor * (touchBrakeIntensity || 1.0);
   }
 
   // Limit speed (severely reduced when crashed)
@@ -1286,6 +1406,12 @@ function preloadSounds() {
 // Check if the device is mobile
 function detectMobileDevice() {
     isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isMobileDevice) {
+        // Load joystick position preference
+        loadJoystickPosition();
+    }
+    
     return isMobileDevice;
 }
 
@@ -1301,103 +1427,62 @@ function createVirtualControls(container) {
     virtualControls.style.left = '0';
     virtualControls.style.width = '100%';
     virtualControls.style.display = 'flex';
-    virtualControls.style.justifyContent = 'space-between';
-    virtualControls.style.padding = '0 20px';
+    
+    // Set justifyContent based on joystick position
+    switch (joystickPosition) {
+        case 'bottom-left':
+            virtualControls.style.justifyContent = 'flex-start';
+            virtualControls.style.paddingLeft = '20px';
+            break;
+        case 'bottom-center':
+            virtualControls.style.justifyContent = 'center';
+            break;
+        case 'bottom-right':
+        default:
+            virtualControls.style.justifyContent = 'flex-end';
+            virtualControls.style.paddingRight = '20px';
+            break;
+    }
+    
     virtualControls.style.boxSizing = 'border-box';
     virtualControls.style.zIndex = '100';
     
-    // Create acceleration button
-    const accelerateBtn = document.createElement('div');
-    accelerateBtn.id = 'accelerate-btn';
-    accelerateBtn.className = 'virtual-btn';
-    accelerateBtn.innerHTML = '⬆️';
-    accelerateBtn.style.width = '60px';
-    accelerateBtn.style.height = '60px';
-    accelerateBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    accelerateBtn.style.color = 'white';
-    accelerateBtn.style.borderRadius = '50%';
-    accelerateBtn.style.display = 'flex';
-    accelerateBtn.style.justifyContent = 'center';
-    accelerateBtn.style.alignItems = 'center';
-    accelerateBtn.style.fontSize = '24px';
-    accelerateBtn.style.userSelect = 'none';
-    accelerateBtn.style.touchAction = 'none';
+    // Create joystick container
+    joystick = document.createElement('div');
+    joystick.id = 'joystick';
+    joystick.style.width = '150px';
+    joystick.style.height = '150px';
+    joystick.style.borderRadius = '50%';
+    joystick.style.backgroundColor = 'rgba(0, 0, 0, 0.3)';
+    joystick.style.border = '2px solid rgba(255, 255, 255, 0.5)';
+    joystick.style.position = 'relative';
+    joystick.style.touchAction = 'none';
+    joystick.style.webkitUserSelect = 'none';
+    joystick.style.userSelect = 'none';
     
-    // Create brake button
-    const brakeBtn = document.createElement('div');
-    brakeBtn.id = 'brake-btn';
-    brakeBtn.className = 'virtual-btn';
-    brakeBtn.innerHTML = '⬇️';
-    brakeBtn.style.width = '60px';
-    brakeBtn.style.height = '60px';
-    brakeBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    brakeBtn.style.color = 'white';
-    brakeBtn.style.borderRadius = '50%';
-    brakeBtn.style.display = 'flex';
-    brakeBtn.style.justifyContent = 'center';
-    brakeBtn.style.alignItems = 'center';
-    brakeBtn.style.fontSize = '24px';
-    brakeBtn.style.userSelect = 'none';
-    brakeBtn.style.touchAction = 'none';
+    // Create joystick knob
+    joystickKnob = document.createElement('div');
+    joystickKnob.id = 'joystick-knob';
+    joystickKnob.style.width = '60px';
+    joystickKnob.style.height = '60px';
+    joystickKnob.style.borderRadius = '50%';
+    joystickKnob.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+    joystickKnob.style.position = 'absolute';
+    joystickKnob.style.top = '50%';
+    joystickKnob.style.left = '50%';
+    joystickKnob.style.transform = 'translate(-50%, -50%)';
+    joystickKnob.style.transition = 'transform 0.1s ease-out';
     
-    // Create left button
-    const leftBtn = document.createElement('div');
-    leftBtn.id = 'left-btn';
-    leftBtn.className = 'virtual-btn';
-    leftBtn.innerHTML = '⬅️';
-    leftBtn.style.width = '60px';
-    leftBtn.style.height = '60px';
-    leftBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    leftBtn.style.color = 'white';
-    leftBtn.style.borderRadius = '50%';
-    leftBtn.style.display = 'flex';
-    leftBtn.style.justifyContent = 'center';
-    leftBtn.style.alignItems = 'center';
-    leftBtn.style.fontSize = '24px';
-    leftBtn.style.userSelect = 'none';
-    leftBtn.style.touchAction = 'none';
+    // Add knob to joystick
+    joystick.appendChild(joystickKnob);
     
-    // Create right button
-    const rightBtn = document.createElement('div');
-    rightBtn.id = 'right-btn';
-    rightBtn.className = 'virtual-btn';
-    rightBtn.innerHTML = '➡️';
-    rightBtn.style.width = '60px';
-    rightBtn.style.height = '60px';
-    rightBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    rightBtn.style.color = 'white';
-    rightBtn.style.borderRadius = '50%';
-    rightBtn.style.display = 'flex';
-    rightBtn.style.justifyContent = 'center';
-    rightBtn.style.alignItems = 'center';
-    rightBtn.style.fontSize = '24px';
-    rightBtn.style.userSelect = 'none';
-    rightBtn.style.touchAction = 'none';
-    
-    // Create left container
-    const leftContainer = document.createElement('div');
-    leftContainer.style.display = 'flex';
-    leftContainer.style.flexDirection = 'column';
-    leftContainer.style.gap = '10px';
-    leftContainer.appendChild(accelerateBtn);
-    leftContainer.appendChild(brakeBtn);
-    
-    // Create right container
-    const rightContainer = document.createElement('div');
-    rightContainer.style.display = 'flex';
-    rightContainer.style.flexDirection = 'column';
-    rightContainer.style.gap = '10px';
-    rightContainer.appendChild(leftBtn);
-    rightContainer.appendChild(rightBtn);
-    
-    // Add buttons to virtual controls
-    virtualControls.appendChild(leftContainer);
-    virtualControls.appendChild(rightContainer);
+    // Add controls to virtual controls container
+    virtualControls.appendChild(joystick);
     
     // Add virtual controls to container
     container.appendChild(virtualControls);
     
-    // Add event listeners for virtual buttons
+    // Add event listeners for virtual controls
     setupVirtualControlEvents();
 }
 
@@ -1485,58 +1570,345 @@ function handleTouchEnd(event) {
 function setupVirtualControlEvents() {
     if (!virtualControls) return;
     
-    // Get virtual buttons
-    const accelerateBtn = document.getElementById('accelerate-btn');
-    const brakeBtn = document.getElementById('brake-btn');
-    const leftBtn = document.getElementById('left-btn');
-    const rightBtn = document.getElementById('right-btn');
+    // Joystick controls
+    if (joystick) {
+        joystick.addEventListener('touchstart', handleJoystickStart);
+        joystick.addEventListener('touchmove', handleJoystickMove);
+        joystick.addEventListener('touchend', handleJoystickEnd);
+        joystick.addEventListener('touchcancel', handleJoystickEnd);
+    }
+}
+
+// Handle joystick touch start
+function handleJoystickStart(event) {
+    event.preventDefault();
+    const touch = event.touches[0];
+    const joystickRect = joystick.getBoundingClientRect();
     
-    // Accelerate button
-    if (accelerateBtn) {
-        accelerateBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            touchAcceleration = true;
-        });
-        
-        accelerateBtn.addEventListener('touchend', () => {
-            touchAcceleration = false;
-        });
+    // Calculate touch position relative to joystick center
+    joystickStartX = joystickRect.left + joystickRect.width / 2;
+    joystickStartY = joystickRect.top + joystickRect.height / 2;
+    joystickCurrentX = touch.clientX;
+    joystickCurrentY = touch.clientY;
+    
+    joystickActive = true;
+    updateJoystickPosition();
+}
+
+// Handle joystick touch move
+function handleJoystickMove(event) {
+    if (!joystickActive) return;
+    event.preventDefault();
+    
+    const touch = event.touches[0];
+    joystickCurrentX = touch.clientX;
+    joystickCurrentY = touch.clientY;
+    
+    updateJoystickPosition();
+}
+
+// Handle joystick touch end
+function handleJoystickEnd(event) {
+    event.preventDefault();
+    joystickActive = false;
+    
+    // Reset joystick knob position
+    if (joystickKnob) {
+        joystickKnob.style.transform = 'translate(-50%, -50%)';
     }
     
-    // Brake button
-    if (brakeBtn) {
-        brakeBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            touchBrake = true;
-        });
-        
-        brakeBtn.addEventListener('touchend', () => {
-            touchBrake = false;
-        });
-    }
+    // Reset all touch controls
+    touchLeft = false;
+    touchRight = false;
+    touchAcceleration = false;
+    touchBrake = false;
+    touchAccelerationIntensity = 0;
+    touchBrakeIntensity = 0;
+    joystickAngle = 0;
+    joystickDistance = 0;
+}
+
+// Update joystick position and calculate steering
+function updateJoystickPosition() {
+    if (!joystickActive || !joystickKnob) return;
     
-    // Left button
-    if (leftBtn) {
-        leftBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault();
+    // Calculate joystick displacement
+    const deltaX = joystickCurrentX - joystickStartX;
+    const deltaY = joystickCurrentY - joystickStartY;
+    
+    // Calculate distance from center (capped at joystick radius)
+    const maxRadius = 60; // Maximum distance the knob can move from center
+    joystickDistance = Math.min(maxRadius, Math.sqrt(deltaX * deltaX + deltaY * deltaY));
+    
+    // Calculate angle in radians
+    joystickAngle = Math.atan2(deltaY, deltaX);
+    
+    // Calculate knob position
+    const knobX = Math.cos(joystickAngle) * joystickDistance;
+    const knobY = Math.sin(joystickAngle) * joystickDistance;
+    
+    // Update knob position
+    joystickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+    
+    // Reset touch controls
+    touchLeft = false;
+    touchRight = false;
+    touchAcceleration = false;
+    touchBrake = false;
+    
+    // Determine steering direction based on joystick angle (horizontal component)
+    if (Math.abs(deltaX) > 10) {
+        if (deltaX < 0) {
             touchLeft = true;
-        });
-        
-        leftBtn.addEventListener('touchend', () => {
-            touchLeft = false;
-        });
+        } else {
+            touchRight = true;
+        }
     }
     
-    // Right button
-    if (rightBtn) {
-        rightBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            touchRight = true;
+    // Determine acceleration/braking based on joystick position (vertical component)
+    if (Math.abs(deltaY) > 10) {
+        // Vertical axis: negative is up (accelerate), positive is down (brake)
+        if (deltaY < 0) {
+            touchAcceleration = true;
+            // Scale acceleration based on how far the joystick is pushed
+            touchAccelerationIntensity = Math.min(1.0, Math.abs(deltaY) / maxRadius);
+        } else {
+            touchBrake = true;
+            // Scale braking based on how far the joystick is pushed
+            touchBrakeIntensity = Math.min(1.0, Math.abs(deltaY) / maxRadius);
+        }
+    }
+}
+
+// Create joystick position selector
+function createJoystickPositionSelector(container) {
+    if (!isMobileDevice) return;
+    
+    // Create position selector container
+    const positionSelector = document.createElement('div');
+    positionSelector.id = 'joystick-position-selector';
+    positionSelector.style.position = 'absolute';
+    positionSelector.style.top = '70px';
+    positionSelector.style.right = '20px';
+    positionSelector.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    positionSelector.style.padding = '10px';
+    positionSelector.style.borderRadius = '5px';
+    positionSelector.style.zIndex = '100';
+    positionSelector.style.display = 'flex';
+    positionSelector.style.flexDirection = 'column';
+    positionSelector.style.gap = '5px';
+    
+    // Create title
+    const title = document.createElement('div');
+    title.textContent = 'Joystick Position:';
+    title.style.color = 'white';
+    title.style.fontSize = '14px';
+    title.style.marginBottom = '5px';
+    positionSelector.appendChild(title);
+    
+    // Create position options
+    const positions = [
+        { id: 'bottom-right', label: 'Bottom Right' },
+        { id: 'bottom-left', label: 'Bottom Left' },
+        { id: 'bottom-center', label: 'Bottom Center' }
+    ];
+    
+    positions.forEach(pos => {
+        const option = document.createElement('div');
+        option.className = 'position-option';
+        option.dataset.position = pos.id;
+        option.textContent = pos.label;
+        option.style.padding = '5px 10px';
+        option.style.backgroundColor = pos.id === joystickPosition ? 'rgba(76, 175, 80, 0.7)' : 'rgba(255, 255, 255, 0.2)';
+        option.style.color = 'white';
+        option.style.borderRadius = '3px';
+        option.style.cursor = 'pointer';
+        option.style.fontSize = '12px';
+        option.style.textAlign = 'center';
+        
+        // Add click event
+        option.addEventListener('click', () => {
+            // Update selected position
+            joystickPosition = pos.id;
+            
+            // Save position preference
+            saveJoystickPosition(joystickPosition);
+            
+            // Update UI
+            document.querySelectorAll('.position-option').forEach(opt => {
+                opt.style.backgroundColor = opt.dataset.position === joystickPosition ? 
+                    'rgba(76, 175, 80, 0.7)' : 'rgba(255, 255, 255, 0.2)';
+            });
+            
+            // Recreate virtual controls with new position
+            if (virtualControls) {
+                container.removeChild(virtualControls);
+                createVirtualControls(container);
+            }
         });
         
-        rightBtn.addEventListener('touchend', () => {
-            touchRight = false;
+        positionSelector.appendChild(option);
+    });
+    
+    container.appendChild(positionSelector);
+}
+
+// Function to save joystick position preference
+function saveJoystickPosition(position) {
+    try {
+        localStorage.setItem('joystickPosition', position);
+    } catch (e) {
+        console.log('Could not save joystick position to localStorage:', e);
+    }
+}
+
+// Function to load joystick position preference
+function loadJoystickPosition() {
+    try {
+        const savedPosition = localStorage.getItem('joystickPosition');
+        if (savedPosition && ['bottom-right', 'bottom-left', 'bottom-center'].includes(savedPosition)) {
+            joystickPosition = savedPosition;
+        } else {
+            // Default to bottom-right if no valid saved position
+            joystickPosition = 'bottom-right';
+            saveJoystickPosition(joystickPosition);
+        }
+    } catch (e) {
+        console.log('Could not load joystick position from localStorage:', e);
+        // Default to bottom-right if there's an error
+        joystickPosition = 'bottom-right';
+    }
+}
+
+// Create in-game settings button and panel
+function createSettingsButton(container) {
+    if (!isMobileDevice) return;
+    
+    // Create settings button
+    const settingsBtn = document.createElement('button');
+    settingsBtn.id = 'settings-btn';
+    settingsBtn.innerHTML = '⚙️';
+    settingsBtn.style.position = 'absolute';
+    settingsBtn.style.top = '70px'; // Changed from 20px to 70px to be below back button
+    settingsBtn.style.left = '20px'; // Changed from right to left to align with back button
+    settingsBtn.style.zIndex = '100';
+    settingsBtn.style.width = '50px';
+    settingsBtn.style.height = '50px';
+    settingsBtn.style.borderRadius = '50%';
+    settingsBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    settingsBtn.style.color = 'white';
+    settingsBtn.style.border = 'none';
+    settingsBtn.style.fontSize = '24px';
+    settingsBtn.style.cursor = 'pointer';
+    settingsBtn.style.display = 'flex';
+    settingsBtn.style.justifyContent = 'center';
+    settingsBtn.style.alignItems = 'center';
+    
+    // Create settings panel (initially hidden)
+    const settingsPanel = document.createElement('div');
+    settingsPanel.id = 'settings-panel';
+    settingsPanel.style.position = 'absolute';
+    settingsPanel.style.top = '130px'; // Adjusted to be below settings button
+    settingsPanel.style.left = '20px'; // Changed from right to left to align with settings button
+    settingsPanel.style.zIndex = '100';
+    settingsPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    settingsPanel.style.padding = '15px';
+    settingsPanel.style.borderRadius = '5px';
+    settingsPanel.style.color = 'white';
+    settingsPanel.style.display = 'none';
+    settingsPanel.style.width = '200px';
+    settingsPanel.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
+    
+    // Add joystick position settings to panel
+    const title = document.createElement('h3');
+    title.textContent = 'Joystick Position';
+    title.style.margin = '0 0 10px 0';
+    title.style.fontSize = '16px';
+    settingsPanel.appendChild(title);
+    
+    // Create position options
+    const positions = [
+        { id: 'bottom-right', label: 'Right' },
+        { id: 'bottom-center', label: 'Center' },
+        { id: 'bottom-left', label: 'Left' }
+    ];
+    
+    const positionContainer = document.createElement('div');
+    positionContainer.style.display = 'flex';
+    positionContainer.style.gap = '10px';
+    positionContainer.style.justifyContent = 'space-between';
+    
+    positions.forEach(pos => {
+        const option = document.createElement('button');
+        option.className = 'settings-position-btn';
+        option.dataset.position = pos.id;
+        option.textContent = pos.label;
+        option.style.flex = '1';
+        option.style.padding = '8px 0';
+        option.style.backgroundColor = pos.id === joystickPosition ? '#4caf50' : 'rgba(255, 255, 255, 0.2)';
+        option.style.color = 'white';
+        option.style.border = 'none';
+        option.style.borderRadius = '3px';
+        option.style.cursor = 'pointer';
+        option.style.transition = 'background-color 0.2s';
+        
+        // Add click event
+        option.addEventListener('click', () => {
+            // Update selected position
+            joystickPosition = pos.id;
+            
+            // Save position preference
+            saveJoystickPosition(joystickPosition);
+            
+            // Update UI
+            document.querySelectorAll('.settings-position-btn').forEach(btn => {
+                btn.style.backgroundColor = btn.dataset.position === joystickPosition ? 
+                    '#4caf50' : 'rgba(255, 255, 255, 0.2)';
+            });
+            
+            // Recreate virtual controls with new position
+            if (virtualControls) {
+                container.removeChild(virtualControls);
+                createVirtualControls(container);
+            }
+            
+            // Update speedometer position
+            updateSpeedometerPosition();
         });
+        
+        positionContainer.appendChild(option);
+    });
+    
+    settingsPanel.appendChild(positionContainer);
+    
+    // Toggle settings panel when button is clicked
+    settingsBtn.addEventListener('click', () => {
+        if (settingsPanel.style.display === 'none') {
+            settingsPanel.style.display = 'block';
+        } else {
+            settingsPanel.style.display = 'none';
+        }
+    });
+    
+    // Add button and panel to container
+    container.appendChild(settingsBtn);
+    container.appendChild(settingsPanel);
+}
+
+// Update speedometer position based on joystick position
+function updateSpeedometerPosition() {
+    const speedometer = document.getElementById('speedometer');
+    if (!speedometer) return;
+    
+    // Position speedometer based on joystick position
+    if (joystickPosition === 'bottom-right') {
+        // If joystick is on the right, put speedometer on the left
+        speedometer.style.right = 'auto';
+        speedometer.style.left = '20px';
+    } else {
+        // Otherwise, put speedometer on the right
+        speedometer.style.left = 'auto';
+        speedometer.style.right = '20px';
     }
 }
 
@@ -1548,5 +1920,4 @@ document.addEventListener('DOMContentLoaded', () => {
   setupKeyboardFeedback();
   preloadSounds();
   detectMobileDevice();
-  createVirtualControls(document.getElementById('game-container'));
 }); 
