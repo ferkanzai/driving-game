@@ -14,13 +14,27 @@ let buildings = [];
 let isCrashed = false;
 let fireParticles = [];
 let lastCollisionTime = 0;
-let collisionCooldown = 5000; // 1 second cooldown between collisions
+let collisionCooldown = 1000; // 1 second cooldown between collisions
 let crashSound;
 
 // Health system
 let playerHealth = 5;
 let healthContainer;
 let gameOverScreen;
+
+// Touch controls
+let touchStartX = 0;
+let touchStartY = 0;
+let touchEndX = 0;
+let touchEndY = 0;
+let isTouching = false;
+let touchThrottle = false;
+let touchAcceleration = false;
+let touchBrake = false;
+let touchLeft = false;
+let touchRight = false;
+let virtualControls;
+let isMobileDevice = false;
 
 // Car color
 let currentColor = '#ff0000'; // Default red
@@ -280,10 +294,10 @@ function setupKeyboardFeedback() {
 function startGame() {
   // Hide start screen
   document.querySelector('.container').style.display = 'none';
-
+  
   // Reset player health
   playerHealth = 5;
-
+  
   // Create game container
   const gameContainer = document.createElement('div');
   gameContainer.id = 'game-container';
@@ -293,7 +307,7 @@ function startGame() {
   gameContainer.style.top = '0';
   gameContainer.style.left = '0';
   document.body.appendChild(gameContainer);
-
+  
   // Create back button
   const backButton = document.createElement('button');
   backButton.id = 'back-btn';
@@ -311,7 +325,7 @@ function startGame() {
   backButton.style.fontWeight = 'bold';
   backButton.addEventListener('click', stopGame);
   gameContainer.appendChild(backButton);
-
+  
   // Create health container
   healthContainer = document.createElement('div');
   healthContainer.id = 'health-container';
@@ -322,10 +336,10 @@ function startGame() {
   healthContainer.style.display = 'flex';
   healthContainer.style.gap = '10px';
   gameContainer.appendChild(healthContainer);
-
+  
   // Create hearts
   updateHealthDisplay();
-
+  
   // Create game over screen (hidden initially)
   gameOverScreen = document.createElement('div');
   gameOverScreen.id = 'game-over-screen';
@@ -342,19 +356,19 @@ function startGame() {
   gameOverScreen.style.alignItems = 'center';
   gameOverScreen.style.zIndex = '200';
   gameOverScreen.style.display = 'none';
-
+  
   const gameOverText = document.createElement('h1');
   gameOverText.textContent = 'GAME OVER';
   gameOverText.style.fontSize = '48px';
   gameOverText.style.marginBottom = '20px';
   gameOverText.style.color = '#ff0000';
   gameOverText.style.textShadow = '0 0 10px #ff0000';
-
+  
   const gameOverMessage = document.createElement('p');
   gameOverMessage.textContent = 'You crashed too many times!';
   gameOverMessage.style.fontSize = '24px';
   gameOverMessage.style.marginBottom = '30px';
-
+  
   const returnButton = document.createElement('button');
   returnButton.textContent = 'Return to Menu';
   returnButton.style.padding = '15px 30px';
@@ -366,12 +380,12 @@ function startGame() {
   returnButton.style.fontSize = '18px';
   returnButton.style.fontWeight = 'bold';
   returnButton.addEventListener('click', stopGame);
-
+  
   gameOverScreen.appendChild(gameOverText);
   gameOverScreen.appendChild(gameOverMessage);
   gameOverScreen.appendChild(returnButton);
   gameContainer.appendChild(gameOverScreen);
-
+  
   // Create speedometer
   const speedometer = document.createElement('div');
   speedometer.id = 'speedometer';
@@ -388,7 +402,7 @@ function startGame() {
   speedometer.style.zIndex = '100';
   speedometer.textContent = 'Speed: 0 km/h';
   gameContainer.appendChild(speedometer);
-
+  
   // Create crash indicator
   const crashIndicator = document.createElement('div');
   crashIndicator.id = 'crash-indicator';
@@ -409,13 +423,19 @@ function startGame() {
   crashIndicator.style.textShadow = '0 0 10px #ff0000';
   crashIndicator.textContent = 'CRASHED!';
   gameContainer.appendChild(crashIndicator);
-
+  
   // Initialize driving scene
   initDrivingScene(gameContainer);
-
+  
+  // Create virtual controls for mobile devices
+  if (isMobileDevice) {
+    createVirtualControls(gameContainer);
+    setupTouchEvents();
+  }
+  
   // Set game as active
   gameActive = true;
-
+  
   // Reset car position and velocity
   carPosition = { x: 0, z: 0 };
   velocity = 0;
@@ -461,20 +481,35 @@ function stopGame() {
   // Remove game container
   const gameContainer = document.getElementById('game-container');
   if (gameContainer) {
+    // Remove touch event listeners if mobile
+    if (isMobileDevice) {
+      gameContainer.removeEventListener('touchstart', handleTouchStart);
+      gameContainer.removeEventListener('touchmove', handleTouchMove);
+      gameContainer.removeEventListener('touchend', handleTouchEnd);
+    }
+    
     document.body.removeChild(gameContainer);
   }
-
+  
   // Show start screen
   document.querySelector('.container').style.display = 'flex';
-
+  
   // Set game as inactive
   gameActive = false;
-
+  
   // Reset health system
   playerHealth = 5;
   healthContainer = null;
   gameOverScreen = null;
-
+  virtualControls = null;
+  
+  // Reset touch controls
+  touchAcceleration = false;
+  touchBrake = false;
+  touchLeft = false;
+  touchRight = false;
+  isTouching = false;
+  
   // Clear driving scene
   drivingScene = null;
   drivingCamera = null;
@@ -1181,11 +1216,13 @@ function handleDrivingControls() {
   // Forward/backward movement (reduced control when crashed)
   const controlFactor = isCrashed ? 0.1 : 1.0; // Reduced from 0.3 to 0.1
 
-  if (keysPressed['w'] || keysPressed['arrowup']) {
+  // Check for keyboard or touch controls for acceleration
+  if (keysPressed['w'] || keysPressed['arrowup'] || touchAcceleration) {
     velocity += ACCELERATION * controlFactor;
   }
 
-  if (keysPressed['s'] || keysPressed['arrowdown']) {
+  // Check for keyboard or touch controls for braking
+  if (keysPressed['s'] || keysPressed['arrowdown'] || touchBrake) {
     velocity -= ACCELERATION * controlFactor;
   }
 
@@ -1200,11 +1237,13 @@ function handleDrivingControls() {
 
   // Turning (reduced control when crashed)
   if (velocity !== 0) {
-    if (keysPressed['a'] || keysPressed['arrowleft']) {
+    // Check for keyboard or touch controls for turning left
+    if (keysPressed['a'] || keysPressed['arrowleft'] || touchLeft) {
       carAngle += TURN_SPEED * (velocity > 0 ? 1 : -1) * controlFactor;
     }
 
-    if (keysPressed['d'] || keysPressed['arrowright']) {
+    // Check for keyboard or touch controls for turning right
+    if (keysPressed['d'] || keysPressed['arrowright'] || touchRight) {
       carAngle -= TURN_SPEED * (velocity > 0 ? 1 : -1) * controlFactor;
     }
   }
@@ -1244,6 +1283,263 @@ function preloadSounds() {
   });
 }
 
+// Check if the device is mobile
+function detectMobileDevice() {
+    isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    return isMobileDevice;
+}
+
+// Create virtual controls for mobile
+function createVirtualControls(container) {
+    if (!isMobileDevice) return;
+    
+    // Create virtual controls container
+    virtualControls = document.createElement('div');
+    virtualControls.id = 'virtual-controls';
+    virtualControls.style.position = 'absolute';
+    virtualControls.style.bottom = '20px';
+    virtualControls.style.left = '0';
+    virtualControls.style.width = '100%';
+    virtualControls.style.display = 'flex';
+    virtualControls.style.justifyContent = 'space-between';
+    virtualControls.style.padding = '0 20px';
+    virtualControls.style.boxSizing = 'border-box';
+    virtualControls.style.zIndex = '100';
+    
+    // Create acceleration button
+    const accelerateBtn = document.createElement('div');
+    accelerateBtn.id = 'accelerate-btn';
+    accelerateBtn.className = 'virtual-btn';
+    accelerateBtn.innerHTML = '⬆️';
+    accelerateBtn.style.width = '60px';
+    accelerateBtn.style.height = '60px';
+    accelerateBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    accelerateBtn.style.color = 'white';
+    accelerateBtn.style.borderRadius = '50%';
+    accelerateBtn.style.display = 'flex';
+    accelerateBtn.style.justifyContent = 'center';
+    accelerateBtn.style.alignItems = 'center';
+    accelerateBtn.style.fontSize = '24px';
+    accelerateBtn.style.userSelect = 'none';
+    accelerateBtn.style.touchAction = 'none';
+    
+    // Create brake button
+    const brakeBtn = document.createElement('div');
+    brakeBtn.id = 'brake-btn';
+    brakeBtn.className = 'virtual-btn';
+    brakeBtn.innerHTML = '⬇️';
+    brakeBtn.style.width = '60px';
+    brakeBtn.style.height = '60px';
+    brakeBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    brakeBtn.style.color = 'white';
+    brakeBtn.style.borderRadius = '50%';
+    brakeBtn.style.display = 'flex';
+    brakeBtn.style.justifyContent = 'center';
+    brakeBtn.style.alignItems = 'center';
+    brakeBtn.style.fontSize = '24px';
+    brakeBtn.style.userSelect = 'none';
+    brakeBtn.style.touchAction = 'none';
+    
+    // Create left button
+    const leftBtn = document.createElement('div');
+    leftBtn.id = 'left-btn';
+    leftBtn.className = 'virtual-btn';
+    leftBtn.innerHTML = '⬅️';
+    leftBtn.style.width = '60px';
+    leftBtn.style.height = '60px';
+    leftBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    leftBtn.style.color = 'white';
+    leftBtn.style.borderRadius = '50%';
+    leftBtn.style.display = 'flex';
+    leftBtn.style.justifyContent = 'center';
+    leftBtn.style.alignItems = 'center';
+    leftBtn.style.fontSize = '24px';
+    leftBtn.style.userSelect = 'none';
+    leftBtn.style.touchAction = 'none';
+    
+    // Create right button
+    const rightBtn = document.createElement('div');
+    rightBtn.id = 'right-btn';
+    rightBtn.className = 'virtual-btn';
+    rightBtn.innerHTML = '➡️';
+    rightBtn.style.width = '60px';
+    rightBtn.style.height = '60px';
+    rightBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    rightBtn.style.color = 'white';
+    rightBtn.style.borderRadius = '50%';
+    rightBtn.style.display = 'flex';
+    rightBtn.style.justifyContent = 'center';
+    rightBtn.style.alignItems = 'center';
+    rightBtn.style.fontSize = '24px';
+    rightBtn.style.userSelect = 'none';
+    rightBtn.style.touchAction = 'none';
+    
+    // Create left container
+    const leftContainer = document.createElement('div');
+    leftContainer.style.display = 'flex';
+    leftContainer.style.flexDirection = 'column';
+    leftContainer.style.gap = '10px';
+    leftContainer.appendChild(accelerateBtn);
+    leftContainer.appendChild(brakeBtn);
+    
+    // Create right container
+    const rightContainer = document.createElement('div');
+    rightContainer.style.display = 'flex';
+    rightContainer.style.flexDirection = 'column';
+    rightContainer.style.gap = '10px';
+    rightContainer.appendChild(leftBtn);
+    rightContainer.appendChild(rightBtn);
+    
+    // Add buttons to virtual controls
+    virtualControls.appendChild(leftContainer);
+    virtualControls.appendChild(rightContainer);
+    
+    // Add virtual controls to container
+    container.appendChild(virtualControls);
+    
+    // Add event listeners for virtual buttons
+    setupVirtualControlEvents();
+}
+
+// Setup touch and swipe events
+function setupTouchEvents() {
+    if (!gameActive) return;
+    
+    const gameContainer = document.getElementById('game-container');
+    if (!gameContainer) return;
+    
+    // Add touch event listeners for swipe detection
+    gameContainer.addEventListener('touchstart', handleTouchStart, false);
+    gameContainer.addEventListener('touchmove', handleTouchMove, false);
+    gameContainer.addEventListener('touchend', handleTouchEnd, false);
+}
+
+// Handle touch start event
+function handleTouchStart(event) {
+    const touch = event.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    isTouching = true;
+}
+
+// Handle touch move event
+function handleTouchMove(event) {
+    if (!isTouching) return;
+    
+    // Prevent scrolling
+    event.preventDefault();
+    
+    const touch = event.touches[0];
+    touchEndX = touch.clientX;
+    touchEndY = touch.clientY;
+    
+    // Calculate swipe direction and distance
+    const diffX = touchEndX - touchStartX;
+    const diffY = touchEndY - touchStartY;
+    
+    // Minimum swipe distance to trigger action
+    const minSwipeDistance = 30;
+    
+    // Reset touch flags
+    touchAcceleration = false;
+    touchBrake = false;
+    touchLeft = false;
+    touchRight = false;
+    
+    // Determine swipe direction
+    if (Math.abs(diffY) > Math.abs(diffX)) {
+        // Vertical swipe
+        if (diffY < -minSwipeDistance) {
+            // Swipe up - accelerate
+            touchAcceleration = true;
+        } else if (diffY > minSwipeDistance) {
+            // Swipe down - brake
+            touchBrake = true;
+        }
+    } else {
+        // Horizontal swipe
+        if (diffX < -minSwipeDistance) {
+            // Swipe left - turn left
+            touchLeft = true;
+        } else if (diffX > minSwipeDistance) {
+            // Swipe right - turn right
+            touchRight = true;
+        }
+    }
+}
+
+// Handle touch end event
+function handleTouchEnd(event) {
+    isTouching = false;
+    
+    // Reset touch flags after a short delay
+    setTimeout(() => {
+        touchAcceleration = false;
+        touchBrake = false;
+        touchLeft = false;
+        touchRight = false;
+    }, 100);
+}
+
+// Setup virtual control button events
+function setupVirtualControlEvents() {
+    if (!virtualControls) return;
+    
+    // Get virtual buttons
+    const accelerateBtn = document.getElementById('accelerate-btn');
+    const brakeBtn = document.getElementById('brake-btn');
+    const leftBtn = document.getElementById('left-btn');
+    const rightBtn = document.getElementById('right-btn');
+    
+    // Accelerate button
+    if (accelerateBtn) {
+        accelerateBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchAcceleration = true;
+        });
+        
+        accelerateBtn.addEventListener('touchend', () => {
+            touchAcceleration = false;
+        });
+    }
+    
+    // Brake button
+    if (brakeBtn) {
+        brakeBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchBrake = true;
+        });
+        
+        brakeBtn.addEventListener('touchend', () => {
+            touchBrake = false;
+        });
+    }
+    
+    // Left button
+    if (leftBtn) {
+        leftBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchLeft = true;
+        });
+        
+        leftBtn.addEventListener('touchend', () => {
+            touchLeft = false;
+        });
+    }
+    
+    // Right button
+    if (rightBtn) {
+        rightBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchRight = true;
+        });
+        
+        rightBtn.addEventListener('touchend', () => {
+            touchRight = false;
+        });
+    }
+}
+
 // Initialize everything when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   init();
@@ -1251,4 +1547,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupStartButton();
   setupKeyboardFeedback();
   preloadSounds();
+  detectMobileDevice();
+  createVirtualControls(document.getElementById('game-container'));
 }); 
